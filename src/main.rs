@@ -30,7 +30,7 @@ pub fn digits(ps: ParseState) -> Progress<&str> {
     }
 }
 
-pub fn char(ch: u32) -> impl Fn(ParseState) -> Progress<&str> {
+pub fn char(ch: u32) -> impl Fn(ParseState) -> Progress<&str> + Clone {
     move |ps: ParseState| -> Progress<&str> {
         let ParseState(content, start_index) = ps;
         let content_len = content.len();
@@ -38,8 +38,10 @@ pub fn char(ch: u32) -> impl Fn(ParseState) -> Progress<&str> {
         // TODO: handle utf-8
         if index < content_len && content[index] as u32 == ch {
             index += 1;
-            let str_ch = [ch];
-            Progress::Parsed(ParseState(content, index), from_utf8(&str_ch))
+            match char::from_u32(ch) {
+                Some(ch) => Progress::Parsed(ParseState(content, index), ch.to_string()[0..]),
+                None => Progress::Failed,
+            }
         } else {
             Progress::Failed
         }
@@ -64,6 +66,17 @@ where
             }
         }
         Progress::Parsed(parse_state, nodes)
+    }
+}
+
+#[test]
+fn test_parse_sequence() {
+    let buffer: String = "1B";
+    let ps: ParseState = ParseState(buffer.as_bytes(), 0);
+    let seq_parser = sequence([digits, char('B' as u32)]);
+    match language_parser(ps) {
+        Progress::Parsed(_, v) => asserteq!(v == ["1", "B"]),
+        Progress::Failed => assert!(false),
     }
 }
 
