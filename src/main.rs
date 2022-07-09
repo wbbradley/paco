@@ -12,7 +12,7 @@ pub enum Progress<'a, V> {
     Failed,
 }
 
-pub fn digits(ps: ParseState) -> Progress<&str> {
+pub fn digits(ps: ParseState) -> Progress<String> {
     let ParseState(content, start_index) = ps;
     let content_len = content.len();
     let mut index = start_index;
@@ -24,14 +24,22 @@ pub fn digits(ps: ParseState) -> Progress<&str> {
             Ok(s) => s,
             Err(_) => return Progress::Failed,
         };
-        Progress::Parsed(ParseState(content, index), slice)
+        Progress::Parsed(ParseState(content, index), slice.to_string())
     } else {
         Progress::Failed
     }
 }
 
-pub fn char(ch: u32) -> impl Fn(ParseState) -> Progress<&str> + Clone {
-    move |ps: ParseState| -> Progress<&str> {
+type Parser<'a, T>
+where
+    T: 'a + Clone + Copy + Send + Sync,
+= Box<dyn 'a + Send + Sync + Fn(ParseState) -> Progress<T>>;
+
+static digs: Parser<String> = Box::new(digits);
+
+pub fn character(ch: char) -> Box<dyn Send + Sync + Fn(ParseState) -> Progress<String>> {
+    let ch = ch as u32;
+    Box::new(move |ps: ParseState| -> Progress<String> {
         let ParseState(content, start_index) = ps;
         let content_len = content.len();
         let mut index = start_index;
@@ -39,24 +47,23 @@ pub fn char(ch: u32) -> impl Fn(ParseState) -> Progress<&str> + Clone {
         if index < content_len && content[index] as u32 == ch {
             index += 1;
             match char::from_u32(ch) {
-                Some(ch) => Progress::Parsed(ParseState(content, index), ch.to_string()[0..]),
+                Some(ch) => Progress::Parsed(ParseState(content, index), ch.to_string()),
                 None => Progress::Failed,
             }
         } else {
             Progress::Failed
         }
-    }
+    })
 }
 
-pub fn sequence<P>(parsers: &Vec<P>) -> impl Fn(ParseState) -> Progress<Vec<&str>> + Clone
-where
-    P: Fn(ParseState) -> Progress<&str> + Clone,
-{
+pub fn sequence<'a>(
+    parsers: &'a [Parser<String>],
+) -> impl 'a + Clone + Fn(ParseState) -> Progress<Vec<String>> {
     let parsers = parsers.clone();
-    move |ps: ParseState| -> Progress<Vec<&str>> {
-        let mut nodes: Vec<&str> = Vec::new();
+    move |ps: ParseState| -> Progress<Vec<String>> {
+        let mut nodes: Vec<String> = Vec::new();
         let mut parse_state = ps;
-        for parser in &parsers {
+        for parser in parsers {
             match parser(parse_state) {
                 Progress::Parsed(next_parse_state, node) => {
                     parse_state = next_parse_state;
@@ -88,9 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let buffer: String = fs::read_to_string(args[1].clone())?;
 
     let ps: ParseState = ParseState(buffer.as_bytes(), 0);
-    let language_parser = sequence([digits, char('Z' as u32)]);
+    let xs: Vec<Parser<String>> = vec![digs, character('Z')];
+    let language_parser = sequence(&xs);
     match language_parser(ps) {
-        Progress::Parsed(_, v) => println!("found digits {v}"),
+        Progress::Parsed(_, v) => println!("found digits {:?}", v),
         Progress::Failed => println!("parse error!"),
     }
     Ok(())
