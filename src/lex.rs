@@ -17,7 +17,6 @@ pub enum Progress<'a, V> {
 }
 
 pub type Parser<'a, T> = dyn 'a + Fn(ParseState) -> Progress<T>;
-pub type Lifter<'a, T, U> = dyn 'a + Fn(T) -> U;
 
 pub fn digits(ps: ParseState) -> Progress<String> {
     let ParseState(content, start_index) = ps;
@@ -100,10 +99,11 @@ where
     })
 }
 
-pub fn lift<'a, T, U>(f: Box<Lifter<'a, T, U>>, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
+pub fn lift<'a, T, U, L>(f: L, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
 where
     T: 'a,
     U: 'a,
+    L: 'a + Fn(T) -> U,
 {
     Box::new(move |ps: ParseState| -> Progress<U> {
         match parser(ps) {
@@ -116,7 +116,7 @@ where
 #[macro_export]
 macro_rules! lift {
     ($f: expr, $parser: expr) => {
-        lift(Box::new($f), Box::new($parser))
+        lift($f, Box::new($parser))
     };
 }
 
