@@ -114,7 +114,7 @@ where
 #[macro_export]
 macro_rules! lift {
     ($f: expr, $parser: expr) => {
-        lift($f, Box::new($parser))
+        lift(&$f, Box::new($parser))
     };
 }
 
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lift_int() {
+    fn test_lift_z_suffiz() {
         let buffer: String = "123".to_string();
         let ps: ParseState = ParseState::new(&buffer);
 
@@ -147,6 +147,21 @@ mod tests {
         let language_parser = lift!(z_suffix, digits);
         match language_parser(ps) {
             Progress::Parsed(_, v) => assert_eq!(v, "123z"),
+            Progress::Failed => assert!(false),
+        }
+    }
+    #[test]
+    fn test_lift_int() {
+        let buffer: String = "123".to_string();
+        let ps: ParseState = ParseState::new(&buffer);
+
+        let int = |s: String| -> i64 {
+            let i = s.parse::<i64>().unwrap();
+            i
+        };
+        let language_parser = lift!(int, digits);
+        match language_parser(ps) {
+            Progress::Parsed(_, v) => assert_eq!(v, 123),
             Progress::Failed => assert!(false),
         }
     }
