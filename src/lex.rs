@@ -5,8 +5,8 @@ use std::vec::Vec;
 pub struct ParseState<'a>(&'a [u8], usize);
 
 impl<'a> ParseState<'a> {
-    pub fn new(contents: &'a String) -> ParseState<'a> {
-        ParseState(contents.as_bytes(), 0)
+    pub fn new(contents: &'a String) -> Self {
+        Self(contents.as_bytes(), 0)
     }
 }
 
