@@ -97,7 +97,7 @@ where
     })
 }
 
-pub fn lift<'a, T, U, L>(f: &'a L, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
+pub fn lift<'a, T, U, L>(f: &'a L, parser: &'a Parser<'a, T>) -> Box<Parser<'a, U>>
 where
     T: 'a,
     U: 'a,
@@ -114,7 +114,7 @@ where
 #[macro_export]
 macro_rules! lift {
     ($f: expr, $parser: expr) => {
-        lift(&$f, Box::new($parser))
+        lift(&$f, &$parser)
     };
 }
 
@@ -150,6 +150,7 @@ mod tests {
             Progress::Failed => assert!(false),
         }
     }
+
     #[test]
     fn test_lift_int() {
         let buffer: String = "123".to_string();
