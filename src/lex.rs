@@ -36,7 +36,7 @@ pub fn digits(ps: ParseState) -> Progress<String> {
     }
 }
 
-pub fn character(ch: char) -> Box<dyn Send + Sync + Fn(ParseState) -> Progress<String>> {
+pub fn character<'a>(ch: char) -> Box<Parser<'a, String>> {
     let ch = ch as u32;
     Box::new(move |ps: ParseState| -> Progress<String> {
         let ParseState(content, start_index) = ps;
