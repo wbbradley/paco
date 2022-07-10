@@ -59,14 +59,12 @@ pub fn character(ch: char) -> Box<dyn Send + Sync + Fn(ParseState) -> Progress<S
 #[macro_export]
 macro_rules! sequence_core {
     ($parsers:expr, $parser:expr) => {{
-        println!("pushing {}", stringify!($parser));
         $parsers.push(Box::new($parser));
         sequence($parsers)
     }};
 
     ($parsers:expr, $parser:expr, $($tail:expr),+) => {{
         $parsers.push(Box::new($parser));
-        println!("pushing {}", stringify!($parser));
         sequence_core!($parsers, $($tail),+)
     }}
 }
@@ -99,7 +97,7 @@ where
     })
 }
 
-pub fn lift<'a, T, U, L>(f: L, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
+pub fn lift<'a, T, U, L>(f: &'a L, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
 where
     T: 'a,
     U: 'a,
