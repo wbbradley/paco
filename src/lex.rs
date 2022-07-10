@@ -17,6 +17,7 @@ pub enum Progress<'a, V> {
 }
 
 pub type Parser<'a, T> = dyn 'a + Fn(ParseState) -> Progress<T>;
+pub type Lifter<'a, T, U> = dyn 'a + Fn(T) -> U;
 
 pub fn digits(ps: ParseState) -> Progress<String> {
     let ParseState(content, start_index) = ps;
@@ -99,6 +100,26 @@ where
     })
 }
 
+pub fn lift<'a, T, U>(f: Box<Lifter<'a, T, U>>, parser: Box<Parser<'a, T>>) -> Box<Parser<'a, U>>
+where
+    T: 'a,
+    U: 'a,
+{
+    Box::new(move |ps: ParseState| -> Progress<U> {
+        match parser(ps) {
+            Progress::Parsed(next_parse_state, node) => Progress::Parsed(next_parse_state, f(node)),
+            Progress::Failed => return Progress::Failed,
+        }
+    })
+}
+
+#[macro_export]
+macro_rules! lift {
+    ($f: expr, $parser: expr) => {
+        lift(Box::new($f), Box::new($parser))
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +132,23 @@ mod tests {
         let language_parser = sequence!(digits, character('B'));
         match language_parser(ps) {
             Progress::Parsed(_, v) => assert_eq!(v, ["1", "B"]),
+            Progress::Failed => assert!(false),
+        }
+    }
+
+    #[test]
+    fn test_lift_int() {
+        let buffer: String = "123".to_string();
+        let ps: ParseState = ParseState::new(&buffer);
+
+        let z_suffix = |s: String| -> String {
+            let mut s = s.clone();
+            s.push_str("z");
+            s
+        };
+        let language_parser = lift!(z_suffix, digits);
+        match language_parser(ps) {
+            Progress::Parsed(_, v) => assert_eq!(v, "123z"),
             Progress::Failed => assert!(false),
         }
     }
