@@ -118,52 +118,72 @@ macro_rules! lift {
     };
 }
 
+pub fn many<'a, T>(parser: Box<Parser<'a, T>>) -> Box<Parser<'a, Vec<T>>>
+where
+    T: 'a,
+{
+    Box::new(move |ps: ParseState| -> Progress<Vec<T>> {
+        let mut nodes: Vec<T> = Vec::new();
+        let mut ps = ps.clone();
+        while let Progress::Parsed(next_parse_state, node) = parser(ps) {
+            ps = next_parse_state;
+            nodes.push(node)
+        }
+        Progress::Parsed(ps, nodes)
+    })
+}
+
+#[macro_export]
+macro_rules! many {
+    ($parser: expr) => {
+        many(Box::new($parser))
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    macro_rules! test_parse_eq {
+        ($input: expr, $parser: expr, $expect: expr) => {
+            let buffer: String = $input.to_string();
+            let ps: ParseState = ParseState::new(&buffer);
+
+            let language_parser = $parser;
+            match language_parser(ps) {
+                Progress::Parsed(_, v) => assert_eq!(v, $expect),
+                Progress::Failed => assert!(false),
+            }
+        };
+    }
+
     #[test]
     fn test_parse_sequence() {
-        let buffer: String = "1B".to_string();
-        let ps: ParseState = ParseState::new(&buffer);
-
-        let language_parser = sequence!(digits, character('B'));
-        match language_parser(ps) {
-            Progress::Parsed(_, v) => assert_eq!(v, ["1", "B"]),
-            Progress::Failed => assert!(false),
-        }
+        test_parse_eq!("1B", sequence!(digits, character('B')), ["1", "B"]);
     }
 
     #[test]
     fn test_lift_z_suffiz() {
-        let buffer: String = "123".to_string();
-        let ps: ParseState = ParseState::new(&buffer);
-
         let z_suffix = |s: String| -> String {
             let mut s = s.clone();
             s.push_str("z");
             s
         };
         let language_parser = lift!(z_suffix, digits);
-        match language_parser(ps) {
-            Progress::Parsed(_, v) => assert_eq!(v, "123z"),
-            Progress::Failed => assert!(false),
-        }
+        test_parse_eq!("123", language_parser, "123z");
     }
 
     #[test]
     fn test_lift_int() {
-        let buffer: String = "123".to_string();
-        let ps: ParseState = ParseState::new(&buffer);
-
         let int = |s: String| -> i64 {
             let i = s.parse::<i64>().unwrap();
             i
         };
-        let language_parser = lift!(int, digits);
-        match language_parser(ps) {
-            Progress::Parsed(_, v) => assert_eq!(v, 123),
-            Progress::Failed => assert!(false),
-        }
+        test_parse_eq!("123", lift!(int, digits), 123);
+    }
+
+    #[test]
+    fn test_many() {
+        test_parse_eq!("+++--", many!(character('+')), ["+", "+", "+"]);
     }
 }
