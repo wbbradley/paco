@@ -1,55 +1,54 @@
-use std::str::from_utf8;
+use std::rc::Rc;
 use std::vec::Vec;
 
-#[derive(Debug, Copy, Clone)]
-pub struct ParseState<'a>(&'a [u8], usize);
+#[derive(Debug)]
+pub struct ParseState<T>(Rc<Vec<T>>, usize);
 
-impl<'a> ParseState<'a> {
-    pub fn new(contents: &'a String) -> Self {
-        Self(contents.as_bytes(), 0)
+impl<T> Clone for ParseState<T> {
+    fn clone(self: &Self) -> Self {
+        Self(self.0.clone(), self.1)
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Progress<'a, V> {
-    Parsed(ParseState<'a>, V),
+impl ParseState<char> {
+    pub fn new(contents: &String) -> Self {
+        Self(Rc::new(contents.chars().collect()), 0)
+    }
+}
+
+#[derive(Debug)]
+pub enum Progress<T, V> {
+    Parsed(ParseState<T>, V),
     Failed,
 }
 
-pub type Parser<'a, T> = dyn 'a + Fn(ParseState) -> Progress<T>;
+pub type Parser<'a, T, U> = Box<dyn 'a + Fn(ParseState<T>) -> Progress<T, U>>;
 
-pub fn digits(ps: ParseState) -> Progress<String> {
+pub fn digits(ps: ParseState<char>) -> Progress<char, String> {
     let ParseState(content, start_index) = ps;
-    let content_len = content.len();
-    let mut index = start_index;
+    let content_len: usize = content.len();
+    let mut index: usize = start_index;
     while index < content_len && content[index].is_ascii_digit() {
         index += 1
     }
     if start_index != index {
-        let slice: &str = match from_utf8(&content[start_index..index]) {
-            Ok(s) => s,
-            Err(_) => return Progress::Failed,
-        };
-        Progress::Parsed(ParseState(content, index), slice.to_string())
+        let s = content[start_index..index].iter().collect::<String>();
+        Progress::Parsed(ParseState(content, index), s)
     } else {
         Progress::Failed
     }
 }
 
-pub fn character<'a>(ch: char) -> Box<Parser<'a, String>> {
-    let ch = ch as u32;
-    Box::new(move |ps: ParseState| -> Progress<String> {
+pub fn character<'a>(ch: char) -> Parser<'a, char, String> {
+    Box::new(move |ps: ParseState<char>| -> Progress<char, String> {
         let ParseState(content, start_index) = ps;
         println!("scanning for {} in {:?}", ch, content);
         let content_len = content.len();
         let mut index = start_index;
         // TODO: handle utf-8
-        if index < content_len && content[index] as u32 == ch {
+        if index < content_len && content[index] == ch {
             index += 1;
-            match char::from_u32(ch) {
-                Some(ch) => Progress::Parsed(ParseState(content, index), ch.to_string()),
-                None => Progress::Failed,
-            }
+            Progress::Parsed(ParseState(content, index), ch.to_string())
         } else {
             Progress::Failed
         }
@@ -72,41 +71,42 @@ macro_rules! sequence_core {
 #[macro_export]
 macro_rules! sequence {
     ($parser:expr, $($tail:expr),+) => {{
-        let mut parsers: Vec<Box<Parser<String>>> = Vec::new();
+        let mut parsers: Vec<Parser<_, _>> = Vec::new();
         sequence_core!(parsers, $parser, $($tail),+)
     }}
 }
 
-pub fn sequence<'a, T>(parsers: Vec<Box<Parser<'a, T>>>) -> Box<Parser<'a, Vec<T>>>
+pub fn sequence<'a, T, V>(parsers: Vec<Parser<'a, T, V>>) -> Parser<'a, T, Vec<V>>
 where
     T: 'a,
+    V: 'a,
 {
-    Box::new(move |ps: ParseState| -> Progress<Vec<T>> {
-        let mut nodes: Vec<T> = Vec::new();
-        let mut parse_state = ps;
+    Box::new(move |ps: ParseState<T>| -> Progress<T, Vec<V>> {
+        let mut nodes: Vec<V> = Vec::new();
+        let mut ps: ParseState<T> = ps;
         for parser in &parsers[..] {
-            match parser(parse_state) {
+            match parser(ps) {
                 Progress::Parsed(next_parse_state, node) => {
-                    parse_state = next_parse_state;
+                    ps = next_parse_state;
                     nodes.push(node);
                 }
                 Progress::Failed => return Progress::Failed,
             }
         }
-        Progress::Parsed(parse_state, nodes)
+        Progress::Parsed(ps, nodes)
     })
 }
 
-pub fn lift<'a, T, U, L>(f: &'a L, parser: &'a Parser<'a, T>) -> Box<Parser<'a, U>>
+pub fn lift<'a, T, U, V>(f: Box<dyn Fn(U) -> V>, parser: Parser<'a, T, U>) -> Parser<'a, T, V>
 where
     T: 'a,
     U: 'a,
-    L: 'a + Fn(T) -> U,
+    V: 'a,
 {
-    Box::new(move |ps: ParseState| -> Progress<U> {
+    Box::new(move |ps: ParseState<T>| -> Progress<T, V> {
         match parser(ps) {
             Progress::Parsed(next_parse_state, node) => Progress::Parsed(next_parse_state, f(node)),
-            Progress::Failed => return Progress::Failed,
+            Progress::Failed => Progress::Failed,
         }
     })
 }
@@ -114,18 +114,19 @@ where
 #[macro_export]
 macro_rules! lift {
     ($f: expr, $parser: expr) => {
-        lift(&$f, &$parser)
+        lift(Box::new($f), Box::new($parser))
     };
 }
 
-pub fn many<'a, T>(parser: Box<Parser<'a, T>>) -> Box<Parser<'a, Vec<T>>>
+pub fn many<'a, T, U>(parser: Parser<'a, T, U>) -> Parser<'a, T, Vec<U>>
 where
     T: 'a,
+    U: 'a,
 {
-    Box::new(move |ps: ParseState| -> Progress<Vec<T>> {
-        let mut nodes: Vec<T> = Vec::new();
-        let mut ps = ps.clone();
-        while let Progress::Parsed(next_parse_state, node) = parser(ps) {
+    Box::new(move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
+        let mut ps = ps_;
+        let mut nodes: Vec<U> = Vec::new();
+        while let Progress::Parsed(next_parse_state, node) = parser(ps.clone()) {
             ps = next_parse_state;
             nodes.push(node)
         }
@@ -147,7 +148,7 @@ mod tests {
     macro_rules! test_parse_eq {
         ($input: expr, $parser: expr, $expect: expr) => {
             let buffer: String = $input.to_string();
-            let ps: ParseState = ParseState::new(&buffer);
+            let ps: ParseState<_> = ParseState::new(&buffer);
 
             let language_parser = $parser;
             match language_parser(ps) {
@@ -165,7 +166,7 @@ mod tests {
     #[test]
     fn test_lift_z_suffiz() {
         let z_suffix = |s: String| -> String {
-            let mut s = s.clone();
+            let mut s = s;
             s.push_str("z");
             s
         };
