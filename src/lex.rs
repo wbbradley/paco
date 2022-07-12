@@ -42,7 +42,6 @@ pub fn digits(ps: ParseState<char>) -> Progress<char, String> {
 pub fn character<'a>(ch: char) -> Parser<'a, char, String> {
     Box::new(move |ps: ParseState<char>| -> Progress<char, String> {
         let ParseState(content, start_index) = ps;
-        println!("scanning for {} in {:?}", ch, content);
         let content_len = content.len();
         let mut index = start_index;
         // TODO: handle utf-8
