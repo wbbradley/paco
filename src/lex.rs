@@ -54,6 +54,34 @@ pub fn character<'a>(ch: char) -> Parser<'a, char, String> {
     })
 }
 
+pub fn exact_string<'a>(run: String) -> Parser<'a, char, String> {
+    let run_chars: Vec<char> = run.chars().collect();
+    let run_chars_len = run_chars.len();
+    if run_chars_len == 0 {
+        return Box::new(move |_: ParseState<char>| -> Progress<char, String> { Progress::Failed });
+    }
+
+    Box::new(move |ps: ParseState<char>| -> Progress<char, String> {
+        let ParseState(content, start_index) = ps;
+        let content_len = content.len();
+        if start_index + run_chars_len > content_len {
+            return Progress::Failed;
+        }
+        let mut content_index = start_index;
+        let mut run_chars_index = run_chars_len - run_chars_len;
+        loop {
+            if content[content_index] != run_chars[run_chars_index] {
+                return Progress::Failed;
+            }
+            run_chars_index += 1;
+            content_index += 1;
+            if run_chars_index == run_chars_len {
+                return Progress::Parsed(ParseState(content, content_index), run.clone());
+            }
+        }
+    })
+}
+
 #[macro_export]
 macro_rules! sequence_core {
     ($parsers:expr, $parser:expr) => {{
@@ -185,5 +213,28 @@ mod tests {
     #[test]
     fn test_many() {
         test_parse_eq!("+++--", many!(character('+')), ["+", "+", "+"]);
+    }
+
+    #[test]
+    fn test_many_lifted() {
+        test_parse_eq!(
+            "+++--",
+            lift!(
+                |xs: Vec<String>| -> String { xs.join("") },
+                many!(character('+'))
+            ),
+            "+++"
+        );
+    }
+    #[test]
+    fn test_exact_string() {
+        test_parse_eq!("a", exact_string("a".to_string()), "a");
+        test_parse_eq!("ab", exact_string("a".to_string()), "a");
+        test_parse_eq!(
+            "abracadabra",
+            exact_string("abracadabra".to_string()),
+            "abracadabra"
+        );
+        test_parse_eq!("😄hey", exact_string("😄".to_string()), "😄");
     }
 }
