@@ -22,7 +22,8 @@ pub enum Progress<T, V> {
     Failed,
 }
 
-pub type Parser<'a, T, U> = Box<dyn 'a + Fn(ParseState<T>) -> Progress<T, U>>;
+pub trait Parser<T, U>: Fn(ParseState<T>) -> Progress<T, U> {}
+impl<C, T, U> Parser<T, U> for C where C: Fn(ParseState<T>) -> Progress<T, U> {}
 
 pub fn digits(ps: ParseState<char>) -> Progress<char, String> {
     let ParseState(content, start_index) = ps;
@@ -39,8 +40,8 @@ pub fn digits(ps: ParseState<char>) -> Progress<char, String> {
     }
 }
 
-pub fn character<'a>(ch: char) -> Parser<'a, char, String> {
-    Box::new(move |ps: ParseState<char>| -> Progress<char, String> {
+pub fn character(ch: char) -> impl Parser<char, String> {
+    move |ps: ParseState<char>| -> Progress<char, String> {
         let ParseState(content, start_index) = ps;
         let content_len = content.len();
         let mut index = start_index;
@@ -51,17 +52,17 @@ pub fn character<'a>(ch: char) -> Parser<'a, char, String> {
         } else {
             Progress::Failed
         }
-    })
+    }
 }
 
-pub fn exact_string<'a>(run: String) -> Parser<'a, char, String> {
+pub fn exact_string(run: String) -> impl Parser<char, String> {
     let run_chars: Vec<char> = run.chars().collect();
     let run_chars_len = run_chars.len();
-    if run_chars_len == 0 {
-        return Box::new(move |_: ParseState<char>| -> Progress<char, String> { Progress::Failed });
-    }
 
-    Box::new(move |ps: ParseState<char>| -> Progress<char, String> {
+    move |ps: ParseState<char>| -> Progress<char, String> {
+        if run_chars_len == 0 {
+            return Progress::Failed;
+        }
         let ParseState(content, start_index) = ps;
         let content_len = content.len();
         if start_index + run_chars_len > content_len {
@@ -79,7 +80,7 @@ pub fn exact_string<'a>(run: String) -> Parser<'a, char, String> {
                 return Progress::Parsed(ParseState(content, content_index), run.clone());
             }
         }
-    })
+    }
 }
 
 #[macro_export]
@@ -98,17 +99,17 @@ macro_rules! sequence_core {
 #[macro_export]
 macro_rules! sequence {
     ($parser:expr, $($tail:expr),+) => {{
-        let mut parsers: Vec<Parser<_, _>> = Vec::new();
+        let mut parsers: Vec<Box<dyn Parser<_, _>>> = Vec::new();
         sequence_core!(parsers, $parser, $($tail),+)
     }}
 }
 
-pub fn sequence<'a, T, V>(parsers: Vec<Parser<'a, T, V>>) -> Parser<'a, T, Vec<V>>
+pub fn sequence<'a, T, V>(parsers: Vec<Box<dyn 'a + Parser<T, V>>>) -> impl 'a + Parser<T, Vec<V>>
 where
     T: 'a,
     V: 'a,
 {
-    Box::new(move |ps: ParseState<T>| -> Progress<T, Vec<V>> {
+    move |ps: ParseState<T>| -> Progress<T, Vec<V>> {
         let mut nodes: Vec<V> = Vec::new();
         let mut ps: ParseState<T> = ps;
         for parser in &parsers[..] {
@@ -121,36 +122,32 @@ where
             }
         }
         Progress::Parsed(ps, nodes)
-    })
+    }
 }
 
-pub fn lift<'a, T, U, V>(f: Box<dyn Fn(U) -> V>, parser: Parser<'a, T, U>) -> Parser<'a, T, V>
+pub fn lift<'a, F, P, T, U, V>(f: F, parser: P) -> impl 'a + Parser<T, V>
 where
+    P: 'a + Fn(ParseState<T>) -> Progress<T, U>,
+    F: 'a + Fn(U) -> V,
     T: 'a,
     U: 'a,
     V: 'a,
 {
-    Box::new(move |ps: ParseState<T>| -> Progress<T, V> {
+    move |ps: ParseState<T>| -> Progress<T, V> {
         match parser(ps) {
             Progress::Parsed(next_parse_state, node) => Progress::Parsed(next_parse_state, f(node)),
             Progress::Failed => Progress::Failed,
         }
-    })
+    }
 }
 
-#[macro_export]
-macro_rules! lift {
-    ($f: expr, $parser: expr) => {
-        lift(Box::new($f), Box::new($parser))
-    };
-}
-
-pub fn many<'a, T, U>(parser: Parser<'a, T, U>) -> Parser<'a, T, Vec<U>>
+pub fn many<'a, P, T, U>(parser: P) -> impl 'a + Fn(ParseState<T>) -> Progress<T, Vec<U>>
 where
     T: 'a,
     U: 'a,
+    P: Fn(ParseState<T>) -> Progress<T, U> + 'a,
 {
-    Box::new(move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
+    move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
         let mut ps = ps_;
         let mut nodes: Vec<U> = Vec::new();
         while let Progress::Parsed(next_parse_state, node) = parser(ps.clone()) {
@@ -158,14 +155,7 @@ where
             nodes.push(node)
         }
         Progress::Parsed(ps, nodes)
-    })
-}
-
-#[macro_export]
-macro_rules! many {
-    ($parser: expr) => {
-        many(Box::new($parser))
-    };
+    }
 }
 
 #[cfg(test)]
@@ -197,7 +187,7 @@ mod tests {
             s.push_str("z");
             s
         };
-        let language_parser = lift!(z_suffix, digits);
+        let language_parser = lift(z_suffix, digits);
         test_parse_eq!("123", language_parser, "123z");
     }
 
@@ -207,21 +197,26 @@ mod tests {
             let i = s.parse::<i64>().unwrap();
             i
         };
-        test_parse_eq!("123", lift!(int, digits), 123);
+        test_parse_eq!("123", lift(int, digits), 123);
+    }
+
+    #[test]
+    fn test_many_on_fn_pointer() {
+        let _parser = many(|_: ParseState<char>| -> Progress<char, String> { Progress::Failed });
     }
 
     #[test]
     fn test_many() {
-        test_parse_eq!("+++--", many!(character('+')), ["+", "+", "+"]);
+        test_parse_eq!("+++--", many(character('+')), ["+", "+", "+"]);
     }
 
     #[test]
     fn test_many_lifted() {
         test_parse_eq!(
             "+++--",
-            lift!(
+            lift(
                 |xs: Vec<String>| -> String { xs.join("") },
-                many!(character('+'))
+                many(character('+'))
             ),
             "+++"
         );
