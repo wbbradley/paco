@@ -164,7 +164,7 @@ where
 
 pub fn lift<'a, F, P, T, U, V>(f: F, parser: P) -> impl 'a + Parser<T, V>
 where
-    P: 'a + Fn(ParseState<T>) -> Progress<T, U>,
+    P: 'a + Parser<T, U>,
     F: 'a + Fn(U) -> V,
     T: 'a,
     U: 'a,
@@ -182,7 +182,7 @@ pub fn many<'a, P, T, U>(parser: P) -> impl 'a + Fn(ParseState<T>) -> Progress<T
 where
     T: 'a,
     U: 'a,
-    P: 'a + Fn(ParseState<T>) -> Progress<T, U>,
+    P: 'a + Parser<T, U>,
 {
     move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
         let mut ps = ps_;
