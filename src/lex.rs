@@ -145,7 +145,7 @@ pub fn many<'a, P, T, U>(parser: P) -> impl 'a + Fn(ParseState<T>) -> Progress<T
 where
     T: 'a,
     U: 'a,
-    P: Fn(ParseState<T>) -> Progress<T, U> + 'a,
+    P: 'a + Fn(ParseState<T>) -> Progress<T, U>,
 {
     move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
         let mut ps = ps_;
@@ -155,6 +155,28 @@ where
             nodes.push(node)
         }
         Progress::Parsed(ps, nodes)
+    }
+}
+
+pub fn take_while<'a, T, Predicate>(
+    pred: Predicate,
+) -> impl 'a + Fn(ParseState<T>) -> Progress<T, Vec<T>>
+where
+    T: 'a + Clone,
+    Predicate: 'a + Fn(T) -> bool,
+{
+    move |ps: ParseState<T>| -> Progress<T, Vec<T>> {
+        let ParseState(content, index) = ps;
+        let mut result: Vec<T> = Vec::new();
+        for i in index..content.len() {
+            if pred(content[i].clone()) {
+                result.push(content[i].clone());
+            } else {
+                break;
+            }
+        }
+        let content_len = content.len();
+        Progress::Parsed(ParseState(content, content_len), result)
     }
 }
 
@@ -221,6 +243,7 @@ mod tests {
             "+++"
         );
     }
+
     #[test]
     fn test_exact_string() {
         test_parse_eq!("a", exact_string("a".to_string()), "a");
@@ -231,5 +254,17 @@ mod tests {
             "abracadabra"
         );
         test_parse_eq!("😄hey", exact_string("😄".to_string()), "😄");
+    }
+
+    #[test]
+    fn test_take_while() {
+        test_parse_eq!(
+            "abcabcd",
+            lift(
+                |xs: Vec<char>| -> String { xs.iter().collect() },
+                take_while(|ch: char| { "abc".contains(ch) })
+            ),
+            "abcabc"
+        );
     }
 }
