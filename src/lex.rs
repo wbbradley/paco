@@ -166,17 +166,17 @@ where
     Predicate: 'a + Fn(T) -> bool,
 {
     move |ps: ParseState<T>| -> Progress<T, Vec<T>> {
-        let ParseState(content, index) = ps;
+        let ParseState(content, mut index) = ps;
         let mut result: Vec<T> = Vec::new();
-        for i in index..content.len() {
-            if pred(content[i].clone()) {
-                result.push(content[i].clone());
+        while index < content.len() {
+            if pred(content[index].clone()) {
+                result.push(content[index].clone());
             } else {
                 break;
             }
+            index += 1;
         }
-        let content_len = content.len();
-        Progress::Parsed(ParseState(content, content_len), result)
+        Progress::Parsed(ParseState(content, index), result)
     }
 }
 
@@ -265,6 +265,14 @@ mod tests {
                 take_while(|ch: char| { "abc".contains(ch) })
             ),
             "abcabc"
+        );
+        test_parse_eq!(
+            "--++--",
+            sequence!(
+                take_while(|ch| { '-' == ch }),
+                take_while(|ch| { '+' == ch })
+            ),
+            [['-', '-'], ['+', '+']]
         );
     }
 }
