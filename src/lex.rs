@@ -227,6 +227,41 @@ where
     take_while(move |x| !pred(x))
 }
 
+pub fn all_of_input<'a, T, V, P>(parser: P) -> impl Parser<T, V>
+where
+    T: 'a,
+    V: 'a,
+    P: 'a + Parser<T, V>,
+{
+    move |ps: ParseState<T>| -> Progress<T, V> {
+        let content_len = ps.0.len();
+        let progress = parser(ps);
+        match progress {
+            Progress::Failed => Progress::Failed,
+            Progress::Parsed(ParseState(_, index), _) => {
+                if index == content_len {
+                    progress
+                } else {
+                    Progress::Failed
+                }
+            }
+        }
+    }
+}
+
+pub fn concat(xs: Vec<String>) -> String {
+    xs.join("")
+    // More general string iterator solution:
+    // xs.iter().map(|s| &**s).collect::<Vec<&str>>().join("")
+}
+
+pub fn collect_string<'a, T>(xs: T) -> String
+where
+    T: 'a + IntoIterator<Item = char>,
+{
+    xs.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,14 +316,7 @@ mod tests {
 
     #[test]
     fn test_many_lifted() {
-        test_parse_eq!(
-            "+++--",
-            lift(
-                |xs: Vec<String>| -> String { xs.join("") },
-                many(character('+'))
-            ),
-            "+++"
-        );
+        test_parse_eq!("+++--", lift(concat, many(character('+'))), "+++");
     }
 
     #[test]
@@ -308,7 +336,7 @@ mod tests {
         test_parse_eq!(
             "abcabcd",
             lift(
-                |xs: Vec<char>| -> String { xs.iter().collect() },
+                collect_string,
                 take_while(|ch: char| { "abc".contains(ch) })
             ),
             "abcabc"
@@ -349,12 +377,21 @@ mod tests {
     fn test_take_until() {
         test_parse_eq!(
             "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123G ",
-            lift(
-                |xs: Vec<char>| -> String { xs.iter().collect() },
-                take_until(|ch: char| { ch.is_uppercase() })
-            ),
+            lift(collect_string, take_until(|ch: char| { ch.is_uppercase() })),
             "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123"
                 .to_string()
+        );
+    }
+
+    #[test]
+    fn test_all_of_input() {
+        test_parse_eq!(
+            "{\"hello\": 145.0}",
+            lift(
+                collect_string,
+                all_of_input(take_until(|ch: char| { ch.is_uppercase() }))
+            ),
+            "{\"hello\": 145.0}".to_string()
         );
     }
 }
