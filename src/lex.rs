@@ -217,6 +217,16 @@ where
     }
 }
 
+pub fn take_until<'a, T, Predicate>(
+    pred: Predicate,
+) -> impl 'a + Fn(ParseState<T>) -> Progress<T, Vec<T>>
+where
+    T: 'a + Clone,
+    Predicate: 'a + Fn(T) -> bool,
+{
+    take_while(move |x| !pred(x))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,6 +342,19 @@ mod tests {
                 "3".to_string(),
                 "21".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn test_take_until() {
+        test_parse_eq!(
+            "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123G ",
+            lift(
+                |xs: Vec<char>| -> String { xs.iter().collect() },
+                take_until(|ch: char| { ch.is_uppercase() })
+            ),
+            "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123"
+                .to_string()
         );
     }
 }
