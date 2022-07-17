@@ -125,6 +125,43 @@ where
     }
 }
 
+#[macro_export]
+macro_rules! choice_core {
+    ($parsers:expr, $parser:expr) => {{
+        $parsers.push(Box::new($parser));
+        choice($parsers)
+    }};
+
+    ($parsers:expr, $parser:expr, $($tail:expr),+) => {{
+        $parsers.push(Box::new($parser));
+        choice_core!($parsers, $($tail),+)
+    }}
+}
+
+#[macro_export]
+macro_rules! choice {
+    ($parser:expr, $($tail:expr),+) => {{
+        let mut parsers: Vec<Box<dyn Parser<_, _>>> = Vec::new();
+        choice_core!(parsers, $parser, $($tail),+)
+    }}
+}
+
+pub fn choice<'a, T, V>(parsers: Vec<Box<dyn 'a + Parser<T, V>>>) -> impl 'a + Parser<T, V>
+where
+    T: 'a,
+    V: 'a,
+{
+    move |ps: ParseState<T>| -> Progress<T, V> {
+        for parser in &parsers[..] {
+            match parser(ps.clone()) {
+                Progress::Failed => continue,
+                progress => return progress,
+            }
+        }
+        Progress::Failed
+    }
+}
+
 pub fn lift<'a, F, P, T, U, V>(f: F, parser: P) -> impl 'a + Parser<T, V>
 where
     P: 'a + Fn(ParseState<T>) -> Progress<T, U>,
@@ -273,6 +310,28 @@ mod tests {
                 take_while(|ch| { '+' == ch })
             ),
             [['-', '-'], ['+', '+']]
+        );
+    }
+
+    #[test]
+    fn test_choice() {
+        test_parse_eq!(
+            "12344321",
+            many(choice!(
+                exact_string("1234".to_string()),
+                exact_string("21".to_string()),
+                exact_string("1".to_string()),
+                exact_string("2".to_string()),
+                exact_string("3".to_string()),
+                exact_string("4".to_string()),
+                exact_string("43".to_string())
+            )),
+            [
+                "1234".to_string(),
+                "4".to_string(),
+                "3".to_string(),
+                "21".to_string()
+            ]
         );
     }
 }
