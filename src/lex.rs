@@ -55,7 +55,11 @@ pub fn character(ch: char) -> impl Parser<char, String> {
     }
 }
 
-pub fn exact_string(run: String) -> impl Parser<char, String> {
+pub fn exact_string<T>(run: T) -> impl Parser<char, String>
+where
+    T: Into<String>,
+{
+    let run: String = run.into();
     let run_chars: Vec<char> = run.chars().collect();
     let run_chars_len = run_chars.len();
 
@@ -249,6 +253,14 @@ where
     }
 }
 
+pub fn constant<'a, T, U>(u: U) -> impl Fn(T) -> U
+where
+    T: 'a,
+    U: 'a + Clone,
+{
+    move |_: T| -> U { u.clone() }
+}
+
 pub fn concat(xs: Vec<String>) -> String {
     xs.join("")
     // More general string iterator solution:
@@ -286,8 +298,7 @@ mod tests {
 
     #[test]
     fn test_lift_z_suffiz() {
-        let z_suffix = |s: String| -> String {
-            let mut s = s;
+        let z_suffix = |mut s: String| -> String {
             s.push_str("z");
             s
         };
@@ -321,8 +332,8 @@ mod tests {
 
     #[test]
     fn test_exact_string() {
-        test_parse_eq!("a", exact_string("a".to_string()), "a");
-        test_parse_eq!("ab", exact_string("a".to_string()), "a");
+        test_parse_eq!("a", exact_string("a"), "a");
+        test_parse_eq!("ab", exact_string("a"), "a");
         test_parse_eq!(
             "abracadabra",
             exact_string("abracadabra".to_string()),
@@ -392,6 +403,15 @@ mod tests {
                 all_of_input(take_until(|ch: char| { ch.is_uppercase() }))
             ),
             "{\"hello\": 145.0}".to_string()
+        );
+    }
+
+    #[test]
+    fn test_constant() {
+        test_parse_eq!(
+            "abc",
+            lift(constant(123), all_of_input(take_while(|_| { true }))),
+            123
         );
     }
 }
