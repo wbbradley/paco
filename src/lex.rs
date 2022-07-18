@@ -199,6 +199,27 @@ where
     }
 }
 
+pub fn many1<'a, P, T, U>(parser: P) -> impl 'a + Fn(ParseState<T>) -> Progress<T, Vec<U>>
+where
+    T: 'a,
+    U: 'a,
+    P: 'a + Parser<T, U>,
+{
+    move |ps_: ParseState<T>| -> Progress<T, Vec<U>> {
+        let mut ps = ps_;
+        let mut nodes: Vec<U> = Vec::new();
+        while let Progress::Parsed(next_parse_state, node) = parser(ps.clone()) {
+            ps = next_parse_state;
+            nodes.push(node)
+        }
+        if nodes.len() >= 1 {
+            Progress::Parsed(ps, nodes)
+        } else {
+            Progress::Failed
+        }
+    }
+}
+
 pub fn take_while<'a, T, Predicate>(
     pred: Predicate,
 ) -> impl 'a + Fn(ParseState<T>) -> Progress<T, Vec<T>>
@@ -291,6 +312,19 @@ mod tests {
         };
     }
 
+    macro_rules! test_parse_fails {
+        ($input: expr, $parser: expr) => {
+            let buffer: String = $input.to_string();
+            let ps: ParseState<_> = ParseState::new(&buffer);
+
+            let language_parser = $parser;
+            match language_parser(ps) {
+                Progress::Parsed(_, _) => assert!(false),
+                Progress::Failed => (),
+            }
+        };
+    }
+
     #[test]
     fn test_parse_sequence() {
         test_parse_eq!("1B", sequence!(digits, character('B')), ["1", "B"]);
@@ -326,6 +360,12 @@ mod tests {
     }
 
     #[test]
+    fn test_many1() {
+        test_parse_eq!("+++--", many1(character('+')), ["+", "+", "+"]);
+        test_parse_fails!("--+++--", many1(character('+')));
+    }
+
+    #[test]
     fn test_many_lifted() {
         test_parse_eq!("+++--", lift(concat, many(character('+'))), "+++");
     }
@@ -334,11 +374,7 @@ mod tests {
     fn test_exact_string() {
         test_parse_eq!("a", exact_string("a"), "a");
         test_parse_eq!("ab", exact_string("a"), "a");
-        test_parse_eq!(
-            "abracadabra",
-            exact_string("abracadabra".to_string()),
-            "abracadabra"
-        );
+        test_parse_eq!("abracadabra", exact_string("abracadabra"), "abracadabra");
         test_parse_eq!("😄hey", exact_string("😄".to_string()), "😄");
     }
 
@@ -367,20 +403,15 @@ mod tests {
         test_parse_eq!(
             "12344321",
             many(choice!(
-                exact_string("1234".to_string()),
-                exact_string("21".to_string()),
-                exact_string("1".to_string()),
-                exact_string("2".to_string()),
-                exact_string("3".to_string()),
-                exact_string("4".to_string()),
-                exact_string("43".to_string())
+                exact_string("1234"),
+                exact_string("21"),
+                exact_string("1"),
+                exact_string("2"),
+                exact_string("3"),
+                exact_string("4"),
+                exact_string("43")
             )),
-            [
-                "1234".to_string(),
-                "4".to_string(),
-                "3".to_string(),
-                "21".to_string()
-            ]
+            ["1234", "4", "3", "21"]
         );
     }
 
@@ -390,8 +421,12 @@ mod tests {
             "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123G ",
             lift(collect_string, take_until(|ch: char| { ch.is_uppercase() })),
             "123 the title is مدخل إلى c++ in arabic. 41😼 😽 🙀 😿 😾 k2j34b12   k3j5b123"
-                .to_string()
         );
+        let input = [1, 2, 3, 4, 5];
+        match take_until(|x: i32| x > 3)(ParseState(Rc::new(input.to_vec()), 0)) {
+            Progress::Parsed(_, v) => assert_eq!(v, [1, 2, 3]),
+            Progress::Failed => assert!(false),
+        }
     }
 
     #[test]
@@ -402,7 +437,7 @@ mod tests {
                 collect_string,
                 all_of_input(take_until(|ch: char| { ch.is_uppercase() }))
             ),
-            "{\"hello\": 145.0}".to_string()
+            "{\"hello\": 145.0}"
         );
     }
 
