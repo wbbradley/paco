@@ -10,9 +10,5 @@ homepage = "https://github.com/wbbradley/paco"
 repository = "https://github.com/wbbradley/paco"
 readme = "README.md"
 keywords = ["lexer", "parser", "combinator", "parser-combinator", "recursive-descent"]
-include = [
-  "src/paco.rs",
-  "Cargo.toml",
-]
 
 [dependencies]
