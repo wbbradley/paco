@@ -2,7 +2,13 @@
 name = "paco"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["William Bradley"]
+license = "MIT"
+description = "A simple parser combinator library."
+homepage = "https://github.com/wbbradley/paco"
+# documentation =
+repository = "https://github.com/wbbradley/paco"
+readme = README.md
+keywords = "lexer, parser, combinator, recursive-descent"
 
 [dependencies]
