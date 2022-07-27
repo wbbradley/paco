@@ -1,9 +1,9 @@
-use crate::lex::{character, digits, sequence, ParseState, Parser, Progress};
+use crate::paco::{character, digits, sequence, ParseState, Parser, Progress};
 use std::env::args;
 use std::fs;
 use std::vec::Vec;
 
-pub mod lex;
+pub mod paco;
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let args: Vec<String> = args().collect();
