@@ -8,7 +8,11 @@ description = "A simple parser combinator library."
 homepage = "https://github.com/wbbradley/paco"
 # documentation =
 repository = "https://github.com/wbbradley/paco"
-readme = README.md
-keywords = "lexer, parser, combinator, recursive-descent"
+readme = "README.md"
+keywords = ["lexer", "parser", "combinator", "parser-combinator", "recursive-descent"]
+include = [
+  "**/*.rs",
+  "Cargo.toml",
+]
 
 [dependencies]
