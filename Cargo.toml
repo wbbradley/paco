@@ -1,6 +1,6 @@
 [package]
 name = "paco"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["William Bradley"]
 license = "MIT"
@@ -12,3 +12,7 @@ readme = "README.md"
 keywords = ["lexer", "parser", "combinator", "parser-combinator", "recursive-descent"]
 
 [dependencies]
+
+[lib]
+name = "paco"
+path = "src/paco.rs"
