@@ -88,23 +88,20 @@ where
 }
 
 #[macro_export]
-macro_rules! sequence_core {
-    ($parsers:expr, $parser:expr) => {{
+macro_rules! sequence {
+    (@recurse $parsers:expr, $parser:expr) => {{
         $parsers.push(Box::new($parser));
         sequence($parsers)
     }};
 
-    ($parsers:expr, $parser:expr, $($tail:expr),+) => {{
+    (@recurse $parsers:expr, $parser:expr, $($tail:expr),+) => {{
         $parsers.push(Box::new($parser));
-        sequence_core!($parsers, $($tail),+)
-    }}
-}
+        sequence!(@recurse $parsers, $($tail),+)
+    }};
 
-#[macro_export]
-macro_rules! sequence {
     ($parser:expr, $($tail:expr),+) => {{
         let mut parsers: Vec<Box<dyn Parser<_, _>>> = Vec::new();
-        sequence_core!(parsers, $parser, $($tail),+)
+        sequence!(@recurse parsers, $parser, $($tail),+)
     }}
 }
 
@@ -130,23 +127,20 @@ where
 }
 
 #[macro_export]
-macro_rules! choice_core {
-    ($parsers:expr, $parser:expr) => {{
+macro_rules! choice {
+    (@recurse $parsers:expr, $parser:expr) => {{
         $parsers.push(Box::new($parser));
         choice($parsers)
     }};
 
-    ($parsers:expr, $parser:expr, $($tail:expr),+) => {{
+    (@recurse $parsers:expr, $parser:expr, $($tail:expr),+) => {{
         $parsers.push(Box::new($parser));
-        choice_core!($parsers, $($tail),+)
-    }}
-}
+        choice!(@recurse $parsers, $($tail),+)
+    }};
 
-#[macro_export]
-macro_rules! choice {
     ($parser:expr, $($tail:expr),+) => {{
         let mut parsers: Vec<Box<dyn Parser<_, _>>> = Vec::new();
-        choice_core!(parsers, $parser, $($tail),+)
+        choice!(@recurse parsers, $parser, $($tail),+)
     }}
 }
 
@@ -331,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lift_z_suffiz() {
+    fn test_lift_z_suffix() {
         let z_suffix = |mut s: String| -> String {
             s.push_str("z");
             s
