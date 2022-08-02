@@ -11,8 +11,12 @@ impl<T> Clone for ParseState<T> {
 }
 
 impl ParseState<char> {
-    pub fn new(contents: &String) -> Self {
-        Self(Rc::new(contents.chars().collect()), 0)
+    pub fn new<T>(contents: T) -> Self
+    where
+        T: Into<String>,
+    {
+        let chars = contents.into();
+        Self(Rc::new(chars.chars().collect()), 0)
     }
 }
 
@@ -100,7 +104,7 @@ macro_rules! sequence {
     }};
 
     ($parser:expr, $($tail:expr),+) => {{
-        let mut parsers: Vec<Box<dyn Parser<_, _>>> = Vec::new();
+        let mut parsers: Vec<Box<dyn $crate::Parser<_, _>>> = Vec::new();
         sequence!(@recurse parsers, $parser, $($tail),+)
     }}
 }
@@ -232,8 +236,52 @@ where
             }
             index += 1;
         }
-        Progress::Parsed(ParseState(content, index), result)
+        crate::Progress::Parsed(ParseState(content, index), result)
     }
+}
+
+pub fn skip_whitespace<'a, P, U>(parser: P) -> impl 'a + Fn(ParseState<char>) -> Progress<char, U>
+where
+    U: 'a,
+    P: 'a + Parser<char, U>,
+{
+    move |ps: ParseState<char>| -> Progress<char, U> {
+        let ParseState(content, mut index) = ps;
+        while index < content.len() && content[index].is_whitespace() {
+            index += 1;
+        }
+        parser(ParseState(content, index))
+    }
+}
+
+pub fn strip_whitespace<'a, P, U>(parser: P) -> impl 'a + Fn(ParseState<char>) -> Progress<char, U>
+where
+    U: 'a,
+    P: 'a + Parser<char, U>,
+{
+    move |ps: ParseState<char>| -> Progress<char, U> {
+        let ParseState(content, mut index) = ps;
+        while index < content.len() && content[index].is_whitespace() {
+            index += 1;
+        }
+        match parser(ParseState(content, index)) {
+            Progress::Parsed(ParseState(content, mut index), value) => {
+                while index < content.len() && content[index].is_whitespace() {
+                    index += 1
+                }
+                Progress::Parsed(ParseState(content, index), value)
+            }
+            Progress::Failed => Progress::Failed,
+        }
+    }
+}
+pub fn string_while<'a, Predicate>(
+    pred: Predicate,
+) -> impl 'a + Fn(ParseState<char>) -> Progress<char, String>
+where
+    Predicate: 'a + Fn(char) -> bool,
+{
+    lift(collect_string, take_while(pred))
 }
 
 pub fn take_until<'a, T, Predicate>(
@@ -295,9 +343,7 @@ mod tests {
 
     macro_rules! test_parse_eq {
         ($input: expr, $parser: expr, $expect: expr) => {
-            let buffer: String = $input.to_string();
-            let ps: ParseState<_> = ParseState::new(&buffer);
-
+            let ps: ParseState<_> = ParseState::new($input);
             let language_parser = $parser;
             match language_parser(ps) {
                 Progress::Parsed(_, v) => assert_eq!(v, $expect),
@@ -308,9 +354,7 @@ mod tests {
 
     macro_rules! test_parse_fails {
         ($input: expr, $parser: expr) => {
-            let buffer: String = $input.to_string();
-            let ps: ParseState<_> = ParseState::new(&buffer);
-
+            let ps: ParseState<_> = ParseState::new($input);
             let language_parser = $parser;
             match language_parser(ps) {
                 Progress::Parsed(_, _) => assert!(false),
@@ -438,8 +482,13 @@ mod tests {
     #[test]
     fn test_constant() {
         test_parse_eq!(
-            "abc",
-            lift(constant(123), all_of_input(take_while(|_| { true }))),
+            " abc",
+            lift(
+                constant(123),
+                all_of_input(strip_whitespace(take_while(|ch: char| {
+                    ch.is_alphabetic()
+                })))
+            ),
             123
         );
     }
